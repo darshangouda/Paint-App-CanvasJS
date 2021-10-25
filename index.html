@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<style>
+.button {
+  border:  2px solid #808080;
+  color: black;
+  padding: 16px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  transition-duration: 0.4s;
+  cursor: pointer;
+  background-color: white;
+}
+.button:hover {
+  background-color: #808080;
+  color: #FFFFFF;
+}
+
+.colorbtn{
+border:  2px solid #808080;
+  color: blue;
+  padding: 0px 0px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  transition-duration: 0.4s;
+  background-color: white;
+  cursor: pointer;
+}
+.COLORPICK {
+padding: 10px 0px;
+border:15px solid black;
+cursor: pointer;
+  width : 55px;
+  height: 42px;
+  
+  background-color: #000000;
+  text-decoration: none;
+}
+.reset {
+  color: #FFFFFF;
+  background-color: #9F0000;
+}
+* {
+  box-sizing: border-box;
+}
+.column {
+  float: left;
+  padding: 10px;
+}
+.left {
+  width: 50%; 
+}
+.right {
+  width: 50%;  
+}
+</style>
+</head>
+<body>
+
+<div class="row">
+<div class="column left" style="background-color:#aaa;">
+  <button id="TRIANGLE" class="button" onClick="initFunc(this.id)">Triangle</button>
+<button type="color" id="SQUARE" class="button" onClick="initFunc(this.id)">Square</button>
+<button id="CIRCLE" class="button" onClick="initFunc(this.id)">Circle</button>
+</div>
+<div class="column right" style="background-color:#bbb;">
+<button id="COLORBTN"  class="colorbtn" onClick="initFunc(this.id)">COLOR<input type="color" name="profilesecondarycolor" list="profilecolorslist" class="COLORPICK"  id="COLORPICK"  onChange="initFunc('COLORPICK_CHANGE')"/></button>
+<datalist id="profilecolorslist"><option value="#00ffff"><option value="#ff00ff"><option value="#ffff00"><option value="#ffaa00"></datalist>
+<button id="RESIZE" class="button resize " onClick="initFunc(this.id)">RESIZE</button>
+<button id="RESET" class="button reset " onClick="initFunc(this.id)">RESET</button>
+</div>
+</div>
+<canvas id="canvas" width="1250" height="550" style="border:1px solid blue">
+
+</canvas>
+<script>
+let canvas = document.getElementById("canvas");
+let context = canvas.getContext("2d");
+//canvas.style='background-color:white';
+const BUTTON ={
+TRIANGLE : 'TRIANGLE',
+SQUARE : 'SQUARE',
+CIRCLE : 'CIRCLE',
+COLORBTN: 'COLORBTN',
+COLORPICK_CLICK :'COLORPICK_CLICK',
+COLORPICK_CHANGE :'COLORPICK_CHANGE',
+RESIZE : 'RESIZE',
+RESET : 'RESET'
+};
+const cursor = {
+   def : 'default',
+   pointer : 'pointer',
+   move: 'all-scroll',
+   crosshair:'crosshair',
+   w_resize: 'w-resize',
+   n_resize : 'n-resize',
+   cell:'cell'
+};
+const moveStat = {
+   oncanvas : 'oncanvas',
+   relocate : 'relocate',
+   resize : 'resize'
+};
+
+const TEMP_TOP = {
+   TRUE : true,
+   FALSE : false
+};
+const MAKE_CHANGE ={
+    YES: true,
+	NO :false
+};
+
+var relocateStatus = false,resizeStatus =false ,resizeBtnStatus= false ,colorBtnStatus = false;
+var prev_xAxis,prev_yAxis,prev_Distance=0;
+
+class Point
+{
+  constructor(x,y)
+  {
+  this.x=x;
+  this.y=y;
+  }
+}
+
+class Triangle
+{
+  constructor(x1,y1,x2,y2,x3,y3,color)
+  {
+  this.x1=x1;
+  this.y1=y1;
+  this.x2=x2;
+  this.y2=y2;
+  this.x3=x3;
+  this.y3=y3;
+  this.color=color;
+  }
+  draw()
+  {
+    context.beginPath();
+	context.fillStyle = this.color;
+    context.moveTo(this.x1, this.y1);
+    context.lineTo(this.x2, this.y2);
+    context.lineTo(this.x3, this.y3);
+    context.fill();
+	context.closePath();
+  }
+   area(x1,y1,x2,y2,x3,y3)
+	{
+   return Math.abs((x1*(y2-y3) + x2*(y3-y1)+ x3*(y1-y2))/2.0);
+	}
+   isInside(mouseX,mouseY)
+   {  
+   const A = this.area (this.x1,this.y1,this.x2,this.y2,this.x3,this.y3); 
+   const A1 = this.area (mouseX, mouseY,this.x2,this.y2,this.x3,this.y3);
+   const A2 = this.area (this.x1,this.y1,mouseX,mouseY,this.x3,this.y3);
+   const A3 = this.area (this.x1,this.y1,this.x2,this.y2,mouseX,mouseY);
+   return (A == A1 + A2 + A3);
+   }
+   transition(mouseX,mouseY,moveStatus)
+   {
+	const tx= mouseX - prev_xAxis;
+	const ty= mouseY - prev_yAxis;
+	if(moveStatus==moveStat.relocate)
+	{
+		this.x1=this.x1+tx;
+		this.y1=this.y1+ty;
+		this.x2=this.x2+tx;
+		this.y2=this.y2+ty;
+		this.x3=this.x3+tx;
+		this.y3=this.y3+ty;	
+	}
+	else if(moveStatus==moveStat.resize)
+	{   
+	    this.x1=this.x1-tx;
+		this.y1=this.y1;  //no change
+		this.x2=this.x2+tx;
+		this.y2=this.y2;  //no change
+		this.x3=this.x3;  //no change
+		this.y3=this.y3+(ty*2); 
+	}
+	prev_xAxis = mouseX;
+	prev_yAxis = mouseY;
+	//console.log(this);
+   }
+   lieOnLine(mouseX,mouseY,x1,y1,x2,y2)
+   {
+    return (((mouseX-x1)*(y2-y1) == (mouseY-y1)*(x2-x1))) ;
+   }
+   pointLieOnLine(mouseX,mouseY)
+   { 
+	   let A= this.lieOnLine(mouseX,mouseY,this.x1,this.y1,this.x2,this.y2);
+	   let B= this.lieOnLine(mouseX,mouseY,this.x2,this.y2,this.x3,this.y3);
+	   let C= this.lieOnLine(mouseX,mouseY,this.x3,this.y3,this.x1,this.y1);
+	   
+      if(A || B || C)
+	  {
+	   return true;
+	  }
+	  return false;
+   }
+ }
+ //=============================SQUARE=======================
+ class Square
+{
+  constructor(x1,y1,x2,y2,x3,y3,x4,y4,color)
+  {
+  this.x1=x1;
+  this.y1=y1;
+  this.x2=x2;
+  this.y2=y2;
+  this.x3=x3;
+  this.y3=y3;
+  this.x4=x4;
+  this.y4=y4;
+  this.color=color;
+  }
+  draw()
+  {
+    context.beginPath();
+	context.fillStyle = this.color;
+    context.moveTo(this.x1, this.y1);
+    context.lineTo(this.x2, this.y2);
+    context.lineTo(this.x3, this.y3);
+	context.lineTo(this.x4, this.y4);
+    context.fill();
+	context.closePath();
+  }
+  
+  
+   isInside(mouseX,mouseY)
+   {  
+    var A=new Point(this.x1,this.y1);
+	var B=new Point(this.x2,this.y2);
+	var C=new Point(this.x3,this.y3);
+	var D=new Point(this.x4,this.y4);
+	var m=new Point(mouseX,mouseY);
+    return this.pointInRectangle(A,B,C,D,m);
+   }
+   pointInRectangle( A,  B,  C,  D,  m )
+   {
+		var AB = this.vect2d(A, B);  var C1 = -1 * (AB.y*A.x + AB.x*A.y); var  D1 = (AB.y*m.x + AB.x*m.y) + C1;
+		var AD = this.vect2d(A, D);  var C2 = -1 * (AD.y*A.x + AD.x*A.y); var D2 = (AD.y*m.x + AD.x*m.y) + C2;
+		var BC = this.vect2d(B, C);  var C3 = -1 * (BC.y*B.x + BC.x*B.y); var D3 = (BC.y*m.x + BC.x*m.y) + C3;
+		var CD = this.vect2d(C, D);  var C4 = -1 * (CD.y*C.x + CD.x*C.y); var D4 = (CD.y*m.x + CD.x*m.y) + C4;
+		if(0 >= D1 && 0 >= D4 && 0 <= D2 && 0 >= D3)
+		 return true;
+		else if(0 <= D1 && 0 <= D4 && 0 >= D2 && 0 <= D3) 
+		 return true;
+		else 
+		  return false;
+	}
+    vect2d( p1,  p2)
+	{
+		var temp=new Point();
+		temp.x = (p2.x - p1.x);
+		temp.y = -1 * (p2.y - p1.y);
+		return temp;
+	}
+	
+   transition(mouseX,mouseY,moveStatus)
+   {
+	const tx= mouseX - prev_xAxis;
+	const ty= mouseY - prev_yAxis;
+	if(moveStatus==moveStat.relocate)
+	{
+		this.x1=this.x1+tx;
+		this.y1=this.y1+ty;
+		this.x2=this.x2+tx;
+		this.y2=this.y2+ty;
+		this.x3=this.x3+tx;
+		this.y3=this.y3+ty;
+		this.x4=this.x4+tx;
+		this.y4=this.y4+ty;
+	}
+	else if(moveStatus==moveStat.resize)
+	{   
+	    this.x1=this.x1-tx;
+		this.y1=this.y1;  
+		this.x2=this.x2+tx;
+		this.y2=this.y2;  
+		this.x3=this.x3+tx; 
+		this.y3=this.y3+ty;
+		this.x4=this.x4-tx;
+		this.y4=this.y4+ty;
+	}
+	prev_xAxis = mouseX;
+	prev_yAxis = mouseY;
+	//console.log(this);
+   }
+   lieOnLine(mouseX,mouseY,x1,y1,x2,y2)
+   {
+    return (((mouseX-x1)*(y2-y1) == (mouseY-y1)*(x2-x1))) ;
+   }
+   pointLieOnLine(mouseX,mouseY)
+   { 
+	   let A= this.lieOnLine(mouseX,mouseY,this.x1,this.y1,this.x2,this.y2);
+	   let B= this.lieOnLine(mouseX,mouseY,this.x2,this.y2,this.x3,this.y3);
+	   let C= this.lieOnLine(mouseX,mouseY,this.x3,this.y3,this.x4,this.y4);
+	   let D= this.lieOnLine(mouseX,mouseY,this.x4,this.y4,this.x1,this.y1);
+      if(A || B || C ||D)
+	  {
+	   return true;
+	  }
+	  return false;
+   }
+ }
+ //============================ CIRCLE ====================
+ class Circle
+{
+  constructor(x1,y1,radius,color)
+  {
+  this.x1=x1;
+  this.y1=y1;
+  this.radius=radius;
+  this.color=color;
+  }
+  draw()
+  {
+    context.beginPath();
+	context.fillStyle = this.color;
+	context.arc(this.x1,this.y1, this.radius, 0, 2 * Math.PI);
+    context.fill();
+	context.closePath();
+  }
+   
+   isInside(mouseX,mouseY)
+   {  
+   if ((mouseX - this.x1) * (mouseX - this.x1) +
+        (mouseY - this.y1) * (mouseY - this.y1) <= this.radius * this.radius)
+        return true;
+    else
+        return false;
+   }
+   transition(mouseX,mouseY,moveStatus)
+   {
+	const tx= mouseX - prev_xAxis;
+	const ty= mouseY - prev_yAxis;
+	if(moveStatus==moveStat.relocate)
+	{
+		this.x1=this.x1+tx;
+		this.y1=this.y1+ty;
+        //this.radius=this.radius;
+        prev_xAxis = mouseX;
+		prev_yAxis = mouseY;		
+	}
+	else if(moveStatus==moveStat.resize)
+	{   
+	    var distance1 = Math.sqrt((mouseY - this.y1) * (mouseY - this.y1) + (mouseX - this.x1) * (mouseX - this.x1));
+		var distance2 = Math.sqrt((mouseY - prev_yAxis) * (mouseY - prev_yAxis) + (mouseX - prev_xAxis) * (mouseX - prev_xAxis));
+		if(prev_Distance < distance1)
+	     {
+		 this.radius=this.radius+distance2;	
+		 }
+         else if(prev_Distance > distance1)
+	     {
+		 this.radius=this.radius-distance2;		
+		 }
+		 prev_Distance = distance1;
+		 prev_xAxis = mouseX;
+		 prev_yAxis = mouseY;		 
+	}
+	//console.log(this);
+   }
+   pointLieOnLine(mouseX,mouseY)
+   {   
+       var distance = Math.sqrt((mouseY - this.y1) * (mouseY - this.y1) + (mouseX - this.x1) * (mouseX - this.x1));
+	   
+      if(0.1>= (this.radius - distance) >= 0 )
+	  {
+	   return true;
+	  }
+	  return false;
+   }
+ }
+ class Shapes 
+ { 
+	constructor()
+	{
+	 this.objectCount=0;
+	 this.Shape = new Array(10);
+	 this.tempView = false;
+	 this.isObjectStat = false;
+	 this.tempObjColor="black";
+	 this.TempBgColor="white";
+	}
+	addShape(ShapeName)
+	{          
+			if(this.objectCount==10)
+			 {
+			  alert("MAXIMUM 10 SHAPES ALLOWED");
+	           return;
+			 }
+			switch(ShapeName) {
+			case BUTTON.TRIANGLE:
+					this.Shape[this.objectCount]=new Triangle(18,22,98,22,58,-38,this.getRandomColor());
+					break;
+			case BUTTON.SQUARE:
+					this.Shape[this.objectCount]=new Square(156,28,230,28,230,-19,156,-19,this.getRandomColor());
+					break;
+			case BUTTON.CIRCLE:
+					this.Shape[this.objectCount]=new Circle(320,0,35,this.getRandomColor());
+					break;
+			default:
+         alert("SHAPE NAME NOT FOUND");
+		}
+		this.Shape[this.objectCount].draw();
+		this.objectCount++;	 
+	}//END addTriangle()
+	getRandomColor()
+	{
+		var letters = '0123456789ABCDEF';
+		var color = '#';
+		for (var i = 0; i < 6; i++){
+			color += letters[Math.floor(Math.random() * 16)];
+		}
+		return color;
+	}//END getRandomColor()
+	isPointToObject(mouseX,mouseY,makeChanges)
+	{
+	  for (var i = this.objectCount-1 ; i >= 0; i--)
+	    {  
+		   if(this.Shape[i].isInside(mouseX,mouseY))
+		   {
+		    
+		   if(makeChanges)
+		    {
+			if(colorBtnStatus==true)
+			(this.Shape[i]).color=this.tempObjColor;
+			this.makeTop(i);
+			this.reDraw();
+			}
+			else
+			{
+			 this.reDrawTemp(i);
+			}
+		    return true;
+		   }
+		}
+		return false;
+	}//END isPointToObject()
+	makeTop(top)
+	{
+	   var topObject =  this.Shape[top];
+	   for(var i = top+1 ; i <= this.objectCount-1; i++)
+	    {
+		   this.Shape[i-1] = this.Shape[i];
+		}
+		this.Shape[this.objectCount-1]=topObject;
+	}//END makeTop() 
+	reDraw()
+	{
+	 context.clearRect(0, 0, canvas.width, canvas.height);
+	 for(var i = 0 ; i <= this.objectCount-1; i++)
+	    {
+		  this.Shape[i].draw();
+		}
+	}
+	reDrawTemp(tempTopObjectNum)
+	{
+	  var prevObjColor;
+	  context.clearRect(0, 0, canvas.width, canvas.height);
+	 for(var i = 0 ; i <= this.objectCount-1; i++)
+	    {
+		   if(!(i==tempTopObjectNum))
+		   this.Shape[i].draw();
+		}
+		if(colorBtnStatus==true)
+		{
+		 prevObjColor=(this.Shape[tempTopObjectNum]).color;
+		 this.Shape[tempTopObjectNum].color=this.tempObjColor;
+		 this.Shape[tempTopObjectNum].draw();
+		 (this.Shape[tempTopObjectNum]).color=prevObjColor;
+		}
+		else{
+		this.Shape[tempTopObjectNum].draw();
+		}
+		this.tempView = true;
+	}
+	transition(x,y,moveStatus)
+	{
+	  this.Shape[this.objectCount-1].transition(x,y,moveStatus);
+	  this.reDraw();
+	}
+	pointerLiesOnLine(x,y)
+	{   
+		for(var i = this.objectCount-1 ; i >= 0; i--)
+	    {
+		  if(this.Shape[i].pointLieOnLine(x,y))
+		  return true;
+		}
+		return false;
+	}
+	deleteObject(mouseX,mouseY)
+	{
+	  if(this.isObjectStat)
+	  {
+	    var bol=confirm("Do you want to Delete Selected Object!");
+		if(bol)
+			{
+			    this.objectCount = this.objectCount -1;
+				this.reDraw();
+			}
+	  }
+	}
+	Reset()
+	{  
+	   
+	  for(var i = 0 ; i <= this.objectCount-1; i++)
+	    { 
+		  this.Shape[i]=null;
+		}
+		this.objectCount = 0;
+	 this.reDraw();
+	}
+}
+ 
+ let objectShapes=new Shapes();
+ 
+ canvas.addEventListener('mousedown',canvasMouseClick);
+ canvas.addEventListener('mousemove',canvasMouseMove);
+ canvas.addEventListener('dblclick',deleteObject);
+ 
+ function initFunc(ID)
+ {
+  var colorpick=document.getElementById('COLORPICK');
+  switch(ID) {
+  case BUTTON.TRIANGLE:
+  case BUTTON.SQUARE:
+  case BUTTON.CIRCLE:
+            objectShapes.addShape(ID);
+			break;
+  case BUTTON.RESIZE:
+             reSizeOnOff();
+			break;
+  case BUTTON.RESET:
+			var bol=confirm("Do you want to RESET CANVAS!");
+			if(bol)
+			{
+			relocateStatus=resizeStatus = false;
+			prev_Distance=0;
+			objectShapes.Reset();
+				if(resizeBtnStatus)
+				{
+			      reSizeOnOff();
+				}
+				if(colorBtnStatus)
+				{
+				 colorpick.style.color="black";
+				 colorpick.style.backgroundColor="black";
+				 colorpick.style.border="15px solid black";
+				 colorBtnOnOff();
+				}1
+			}
+			break;
+  //case BUTTON.COLORPICK_CLICK:
+   //        console.log('color click');
+	//		colorBtnOnOff();// no break
+  case BUTTON.COLORBTN:
+		     colorBtnOnOff();
+             break;
+  case BUTTON.COLORPICK_CHANGE:
+			 colorpick.style.color=colorpick.value;
+			 colorpick.style.border="15px solid "+colorpick.value;
+			 colorpick.style.backgroundColor=colorpick.value;
+			 objectShapes.tempObjColor=colorpick.value;
+			 if(colorBtnStatus == false)
+				colorBtnOnOff();
+			 break;
+  
+  default:
+     console.log("WRONG BUTTON ID ="+ID);
+		}
+ }
+ function reSizeOnOff()
+ {
+   let resize = document.getElementById("RESIZE");
+   //alert('call');
+   if(resizeBtnStatus== true)
+   {
+    resizeBtnStatus = false;
+	resize.style.color = "grey";
+	resize.style.backgroundColor="white";
+   }
+   else
+   {
+    resizeBtnStatus = true;
+	resize.style.color = 'white' ;
+	resize.style.backgroundColor= 'green';
+   }
+ }
+ function colorBtnOnOff()
+ {
+   let colorbtn = document.getElementById("COLORBTN");
+   //alert('call');
+   if(colorBtnStatus== true)
+   {
+    colorBtnStatus = false;
+	colorbtn.style.color = "grey";
+	colorbtn.style.backgroundColor="white";
+   }
+   else
+   {
+    colorBtnStatus = true;
+	colorbtn.style.color = 'white' ;
+	colorbtn.style.backgroundColor= 'green';
+   }
+ }
+ function canvasMouseMove(event)
+ {
+    const rect = canvas.getBoundingClientRect();
+	const mouseX = event.x - rect.left;
+	const mouseY = event.y - rect.top;
+   if(objectShapes.tempView == true)
+   {
+    objectShapes.reDraw();
+	objectShapes.tempView=false;
+   }
+  
+   //console.log(objectShapes.isPointToObject(mouseX,mouseY,MAKE_CHANGE.NO));
+   if(objectShapes.isPointToObject(mouseX,mouseY,MAKE_CHANGE.NO))
+   {   
+       if(canvas.style.cursor==cursor.def && !(canvas.style.cursor==cursor.crosshair) )
+        {
+		canvas.style.cursor=cursor.pointer;
+	    }
+	    else if(objectShapes.pointerLiesOnLine(mouseX,mouseY) && resizeBtnStatus==true && colorBtnStatus==false)
+		{
+		canvas.style.cursor=cursor.crosshair;
+		}
+		else if(colorBtnStatus==true)
+		{
+		 canvas.style.cursor=cursor.cell;
+		}
+   }
+   else
+   { 
+     canvas.style.cursor=cursor.def;	 
+   }
+ }
+ 
+ function deleteObject(event)
+ {
+  const rect = canvas.getBoundingClientRect();
+	const x = event.x - rect.left;
+	const y = event.y - rect.top;
+   objectShapes.deleteObject(x,y);
+ }
+ function objectRelocate(event)
+ {
+ const rect = canvas.getBoundingClientRect();
+ const x = event.x - rect.left;
+ const y = event.y - rect.top;
+ objectShapes.transition(x,y,moveStat.relocate);
+ }
+ function objectResize(event)
+ {
+ const rect = canvas.getBoundingClientRect();
+ const x = event.x - rect.left;
+ const y = event.y - rect.top;
+ objectShapes.transition(x,y,moveStat.resize);
+ }
+ 
+ function canvasMouseClick(event)
+ {
+  canvas.removeEventListener('mousemove',canvasMouseMove);
+ const rect = canvas.getBoundingClientRect();
+ const mouseX = event.x - rect.left;
+ const mouseY = event.y - rect.top;
+ prev_xAxis=mouseX;
+ prev_yAxis=mouseY;
+ objectShapes.isObjectStat=objectShapes.isPointToObject(mouseX,mouseY,MAKE_CHANGE.YES);
+
+	/*if(!isObjectStat )
+	 {
+	 canvas.addEventListener('mousemove',canvasMouseMove);
+	 console.log("false ="+isObjectStat);
+	 return;
+	 }
+	 console.log(isObjectStat);*/
+	 
+     	 if(canvas.style.cursor== cursor.pointer && relocateStatus == false )
+		 {
+		 relocateStatus = true;
+		 canvas.style.cursor=cursor.move; 
+		 canvas.addEventListener('mousemove',objectRelocate );//drag
+		 return;
+		 }
+		 else if(relocateStatus == true)
+		 {
+		 relocateStatus = false;
+		 canvas.style.cursor=cursor.pointer;
+		 canvas.removeEventListener('mousemove',objectRelocate);
+		 canvas.addEventListener('mousemove',canvasMouseMove);
+		 return;
+		 }
+	 
+         if(canvas.style.cursor== cursor.crosshair && resizeStatus == false)
+		  {
+		  resizeStatus=true;
+		   canvas.style.cursor = cursor.move;
+		   canvas.addEventListener('mousemove',objectResize);
+		   return;
+		  }
+		  else if(resizeStatus = true)
+		  { 
+		    prev_Distance=0; // for Circle only
+		    resizeStatus=false;
+			canvas.style.cursor== cursor.crosshair;
+			canvas.removeEventListener('mousemove',objectResize);
+			canvas.addEventListener('mousemove',canvasMouseMove);
+			return;
+		  }
+		  if(canvas.style.cursor== cursor.crosshair)
+		   {
+		    
+		   }
+ }
+ 
+ 
+
+
+</script>
+</body>
+</html>
